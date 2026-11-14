@@ -1,0 +1,62 @@
+groups:
+  - name: self-healing.workloads
+    rules:
+      # Probes stay green while users get 500s: Kubernetes alone never notices this one.
+      - alert: HighErrorRate
+        expr: |
+          (
+            sum by (service, pod) (rate(http_requests_total{job="demo-services",status=~"5.."}[30s]))
+            /
+            sum by (service, pod) (rate(http_requests_total{job="demo-services"}[30s]))
+          ) > 0.3
+        for: 10s
+        labels: {severity: critical, team: platform}
+        annotations:
+          summary: "{{ $labels.pod }} is failing {{ $value | humanizePercentage }} of requests"
+
+      - alert: HighLatency
+        expr: |
+          histogram_quantile(0.95,
+            sum by (service, pod, le) (rate(http_request_duration_seconds_bucket{job="demo-services"}[30s]))
+          ) > 0.5
+        for: 10s
+        labels: {severity: warning, team: platform}
+        annotations:
+          summary: "{{ $labels.pod }} p95 latency is {{ $value | humanizeDuration }}"
+
+      # Recycle the pod well before it reaches its 512Mi limit and gets OOM-killed.
+      - alert: HighMemoryUsage
+        expr: process_resident_memory_bytes{job="demo-services"} > 160e6
+        for: 5s
+        labels: {severity: warning, team: platform}
+        annotations:
+          summary: "{{ $labels.pod }} resident memory at {{ $value | humanize1024 }}B"
+
+  - name: self-healing.cluster
+    rules:
+      - alert: ServiceDown
+        expr: kube_deployment_status_replicas_available{namespace="self-healing",deployment=~"orders|payments|inventory"} == 0
+        for: 10s
+        labels: {severity: critical, team: platform}
+        annotations:
+          summary: "{{ $labels.deployment }} has no available replicas"
+
+      - alert: PodCrashLooping
+        expr: kube_pod_container_status_waiting_reason{namespace="self-healing",reason="CrashLoopBackOff"} == 1
+        for: 5s
+        labels: {severity: critical, team: platform}
+        annotations:
+          summary: "{{ $labels.pod }} is in CrashLoopBackOff"
+
+      - alert: PodRestartBurst
+        expr: increase(kube_pod_container_status_restarts_total{namespace="self-healing"}[5m]) > 3
+        labels: {severity: info, team: platform}
+        annotations:
+          summary: "{{ $labels.pod }} restarted {{ $value | humanize }} times in 5m"
+
+      - alert: HealerDown
+        expr: up{job="healer"} == 0 or absent(up{job="healer"})
+        for: 30s
+        labels: {severity: critical, team: platform}
+        annotations:
+          summary: "The self-healing controller is not running"

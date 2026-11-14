@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: self-healing
+  labels: {app.kubernetes.io/part-of: aegis}
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+  labels: {app.kubernetes.io/part-of: aegis}

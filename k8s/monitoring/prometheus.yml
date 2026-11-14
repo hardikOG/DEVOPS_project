@@ -1,0 +1,61 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+  external_labels: {cluster: aegis}
+
+rule_files: [/etc/prometheus/rules/*.yml]
+
+alerting:
+  alertmanagers:
+    - static_configs: [{targets: ["alertmanager.monitoring.svc:9093"]}]
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs: [{targets: ["localhost:9090"]}]
+
+  # Every running pod that opts in with prometheus.io/scrape and is in the managed set.
+  - job_name: demo-services
+    kubernetes_sd_configs:
+      - role: pod
+        namespaces: {names: [self-healing]}
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+        regex: "true"
+        action: keep
+      - source_labels: [__meta_kubernetes_pod_label_selfheal_managed]
+        regex: "true"
+        action: keep
+      - source_labels: [__meta_kubernetes_pod_phase]
+        regex: Running
+        action: keep
+      - source_labels: [__meta_kubernetes_pod_ip, __meta_kubernetes_pod_annotation_prometheus_io_port]
+        regex: (.+);(.+)
+        replacement: $1:$2
+        target_label: __address__
+      - source_labels: [__meta_kubernetes_pod_name]
+        target_label: pod
+      - source_labels: [__meta_kubernetes_pod_label_app]
+        target_label: service
+      - source_labels: [__meta_kubernetes_pod_label_version]
+        target_label: version
+      - source_labels: [__meta_kubernetes_namespace]
+        target_label: namespace
+
+  - job_name: healer
+    kubernetes_sd_configs:
+      - role: pod
+        namespaces: {names: [self-healing]}
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_label_app]
+        regex: healer
+        action: keep
+      - source_labels: [__meta_kubernetes_pod_ip, __meta_kubernetes_pod_annotation_prometheus_io_port]
+        regex: (.+);(.+)
+        replacement: $1:$2
+        target_label: __address__
+      - source_labels: [__meta_kubernetes_pod_name]
+        target_label: pod
+
+  - job_name: kube-state-metrics
+    honor_labels: true
+    static_configs: [{targets: ["kube-state-metrics.monitoring.svc:8080"]}]

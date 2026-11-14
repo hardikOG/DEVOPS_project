@@ -1,0 +1,37 @@
+#!/bin/bash
+# EC2 bootstrap: Docker + k3s (using Docker as its runtime, so built images need no import),
+# then the full stack, then Jenkins. Runs once at first boot.
+set -euxo pipefail
+exec > >(tee -a /var/log/aegis-bootstrap.log) 2>&1
+
+export DEBIAN_FRONTEND=noninteractive
+apt-get update
+apt-get install -y docker.io docker-compose-v2 git make curl python3 python3-venv
+systemctl enable --now docker
+
+curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION=v1.31.5+k3s1 sh -s - \
+  --docker --disable traefik --write-kubeconfig-mode 644 --tls-san host.docker.internal
+until k3s kubectl get nodes | grep -q " Ready"; do sleep 3; done
+
+git clone --branch "${repo_branch}" "${repo_url}" /opt/aegis
+cd /opt/aegis
+export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+PUBLIC_HOST=$(curl -s -H "X-aws-ec2-metadata-token: $(curl -s -X PUT http://169.254.169.254/latest/api/token -H 'X-aws-ec2-metadata-token-ttl-seconds: 300')" http://169.254.169.254/latest/meta-data/public-hostname)
+sed -i "s#localhost#$PUBLIC_HOST#g" k8s/healer/healer.env
+
+make build
+bash scripts/deploy.sh
+
+# Jenkins on the host network, pointed at the local k3s and the GitHub repo.
+mkdir -p /root/.kube && cp /etc/rancher/k3s/k3s.yaml /root/.kube/config
+cp /etc/rancher/k3s/k3s.yaml .kube-config
+cat > jenkins/.env <<ENV
+JENKINS_ADMIN_PASSWORD=$(head -c 18 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 20)
+REPO_URL=${repo_url}
+REPO_BRANCH=*/${repo_branch}
+CLUSTER_RUNTIME=shared-docker
+ENV
+mkdir -p .kube && cp /etc/rancher/k3s/k3s.yaml .kube/config.docker
+sed -i "s#https://127.0.0.1:6443#https://host.docker.internal:6443#" .kube/config.docker
+docker compose -f jenkins/docker-compose.yml --env-file jenkins/.env up -d --build
+echo "aegis bootstrap complete"

@@ -1,0 +1,34 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - namespaces.yaml
+  - apps/demo-services.yaml
+  - healer/healer.yaml
+  - monitoring/prometheus.yaml
+  - monitoring/alertmanager.yaml
+  - monitoring/kube-state-metrics.yaml
+  - monitoring/grafana.yaml
+
+configMapGenerator:
+  - name: healer-config
+    namespace: self-healing
+    envs: [healer/healer.env]
+  - name: prometheus-config
+    namespace: monitoring
+    files: [monitoring/prometheus.yml]
+  - name: prometheus-rules
+    namespace: monitoring
+    files: [monitoring/alert-rules.yml]
+  - name: alertmanager-config
+    namespace: monitoring
+    files: [monitoring/alertmanager.yml]
+  - name: grafana-datasources
+    namespace: monitoring
+    files: [monitoring/grafana/datasources.yaml]
+  - name: grafana-dashboard-providers
+    namespace: monitoring
+    files: [monitoring/grafana/providers.yaml]
+  - name: grafana-dashboards
+    namespace: monitoring
+    files: [monitoring/grafana/self-healing.json]

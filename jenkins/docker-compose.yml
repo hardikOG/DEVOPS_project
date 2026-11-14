@@ -1,0 +1,25 @@
+# Local Jenkins wired to the k3s-in-Docker cluster from scripts/cluster-up.sh.
+# Runs as root so the pipeline can use the host Docker socket (demo convenience;
+# use a dedicated build agent in production).
+services:
+  jenkins:
+    build: .
+    image: aegis/jenkins:local
+    container_name: aegis-jenkins
+    user: root
+    ports: ["8080:8080"]
+    environment:
+      JENKINS_ADMIN_PASSWORD: ${JENKINS_ADMIN_PASSWORD:?run scripts/jenkins-up.sh or set JENKINS_ADMIN_PASSWORD}
+      REPO_URL: ${REPO_URL:-file:///src}
+      REPO_BRANCH: ${REPO_BRANCH:-*/main}
+      KUBECONFIG: /root/.kube/config
+      CLUSTER_RUNTIME: ${CLUSTER_RUNTIME:-k3s-docker}
+      HEALER_URL: http://host.docker.internal:30080
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    volumes:
+      - jenkins_home:/var/jenkins_home
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ../.kube/config.docker:/root/.kube/config:ro
+      - ..:/src:ro
+volumes:
+  jenkins_home:
