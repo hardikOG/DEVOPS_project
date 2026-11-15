@@ -36,9 +36,14 @@ spec:
             httpGet: {path: /readyz, port: http}
             periodSeconds: 2
             failureThreshold: 2
+          # Liveness only starts once the app has booted, so a slow start on a
+          # CPU-starved node is not mistaken for a hang (up to 60s allowed).
+          startupProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 2
+            failureThreshold: 30
           livenessProbe:
             httpGet: {path: /healthz, port: http}
-            initialDelaySeconds: 3
             periodSeconds: 3
             failureThreshold: 2
           resources:
@@ -97,9 +102,14 @@ spec:
             httpGet: {path: /readyz, port: http}
             periodSeconds: 2
             failureThreshold: 2
+          # Liveness only starts once the app has booted, so a slow start on a
+          # CPU-starved node is not mistaken for a hang (up to 60s allowed).
+          startupProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 2
+            failureThreshold: 30
           livenessProbe:
             httpGet: {path: /healthz, port: http}
-            initialDelaySeconds: 3
             periodSeconds: 3
             failureThreshold: 2
           resources:
@@ -158,9 +168,14 @@ spec:
             httpGet: {path: /readyz, port: http}
             periodSeconds: 2
             failureThreshold: 2
+          # Liveness only starts once the app has booted, so a slow start on a
+          # CPU-starved node is not mistaken for a hang (up to 60s allowed).
+          startupProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 2
+            failureThreshold: 30
           livenessProbe:
             httpGet: {path: /healthz, port: http}
-            initialDelaySeconds: 3
             periodSeconds: 3
             failureThreshold: 2
           resources:
