@@ -78,7 +78,12 @@ pipeline {
             curl -fsS "$HEALER_URL/healthz" && break
             sleep 2
           done
-          curl -fsS "$HEALER_URL/api/state" | python3 -c "import json,sys; s=json.load(sys.stdin); bad=[v['name'] for v in s['services'] if v['status']!='healthy']; print('services:', [v['name'] for v in s['services']]); sys.exit(1 if bad or not s['services'] else 0)"
+          # A just-restarted healer may still be verifying a recovery: allow up to 2 minutes to settle.
+          for i in $(seq 1 24); do
+            curl -fsS "$HEALER_URL/api/state" | python3 -c "import json,sys; s=json.load(sys.stdin); bad=[v['name'] for v in s['services'] if v['status']!='healthy']; print('services:', [(v['name'], v['status']) for v in s['services']]); sys.exit(1 if bad or not s['services'] else 0)" && exit 0
+            sleep 5
+          done
+          exit 1
         '''
       }
     }
