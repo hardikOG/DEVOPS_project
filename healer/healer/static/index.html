@@ -383,7 +383,7 @@ function renderChaos(s) {
 }
 
 function renderIncidents(s) {
-  const list = s.incidents.filter(i => i.status !== 'superseded' || s.incidents.length < 12);
+  const list = s.incidents.filter(i => i.status !== 'superseded');
   $('incCount').textContent = `${s.stats.total} total · ${s.stats.open} open`;
   if (!list.length) { $('incidents').innerHTML = '<div class="empty"><b>No incidents yet</b>Pick an experiment in the Chaos lab and watch the healer respond.</div>'; return; }
   const html = list.map(i => {

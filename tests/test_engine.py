@@ -277,3 +277,43 @@ def test_notifier_failures_do_not_break_healing(cluster, clock):
     pod = cluster.deployments["orders"].pods[0].name
     run(h.handle_alerts(alert("HighErrorRate", service="orders", pod=pod)))
     assert sent and cluster.calls == [("delete_pod", pod)]
+
+
+def _bad_release(cluster, clock):
+    dep = cluster.deployments["payments"]
+    dep.revision, dep.has_previous_revision, dep.current_hash = 2, True, "h2"
+    dep.revision_created_at = clock() - 20
+    return dep, cluster.add_pod("payments", ready=False, template_hash="h2")
+
+
+def test_prometheus_crashloop_alert_rolls_back_before_local_threshold(healer, cluster, clock):
+    _, bad = _bad_release(cluster, clock)
+    cluster.pod(bad.name).restart_count = 1  # Prometheus can fire before our own threshold of 2
+    run(healer.reconcile_once())
+    run(healer.handle_alerts(alert("PodCrashLooping", pod=bad.name)))
+    assert ("rollback", "payments") in cluster.calls
+    assert not any(c[0] == "delete_pod" for c in cluster.calls)
+
+
+def test_restart_that_does_not_fix_crashloop_escalates_in_same_incident(healer, cluster, clock):
+    dep, bad = _bad_release(cluster, clock)
+    dep.has_previous_revision = False  # first decision can only be a pod restart
+    run(healer.reconcile_once())
+    cluster.pod(bad.name).restart_count, cluster.pod(bad.name).waiting_reason = 2, "CrashLoopBackOff"
+    clock.advance(2)
+    run(healer.reconcile_once())
+    assert cluster.calls == [("delete_pod", bad.name)]
+    incident = healer.store.find_open(incident_key("PodCrashLooping", "payments", None))
+
+    cluster.remove_pod(bad.name)
+    dep.has_previous_revision = True
+    replacement = cluster.add_pod("payments", ready=False, template_hash="h2")
+    clock.advance(2)
+    run(healer.reconcile_once())
+    cluster.pod(replacement.name).restart_count = 2
+    cluster.pod(replacement.name).waiting_reason = "CrashLoopBackOff"
+    clock.advance(2)
+    run(healer.reconcile_once())
+    assert ("rollback", "payments") in cluster.calls
+    assert incident.action == "rollback"
+    assert [i.kind for i in healer.store.all() if i.status != "superseded"] == ["PodCrashLooping"]

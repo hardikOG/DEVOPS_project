@@ -182,7 +182,10 @@ async def run_loadgen() -> None:
     targets = [t.strip() for t in os.getenv("LOADGEN_TARGETS", "").split(",") if t.strip()]
     rps = float(os.getenv("LOADGEN_RPS", "10"))
     print(f"[loadgen] {rps} rps per target -> {targets}", flush=True)
-    async with httpx.AsyncClient(timeout=3.0) as client:
+    # No keep-alive: a Service balances per *connection*, so pooled connections stay
+    # pinned to old pods and replacement pods would never receive traffic.
+    limits = httpx.Limits(max_keepalive_connections=0)
+    async with httpx.AsyncClient(timeout=3.0, limits=limits) as client:
 
         async def hit(url: str) -> None:
             try:

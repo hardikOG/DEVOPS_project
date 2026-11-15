@@ -244,8 +244,24 @@ class Healer:
         now = self.clock()
         key = incident_key(det.kind, det.deployment, det.pod)
 
+        if det.kind == "ContainerRestarted":
+            crashloop = self.store.find_open(incident_key("PodCrashLooping", det.deployment, None))
+            if crashloop is not None:
+                return  # Part of a crash loop that is already being handled.
+
         existing = self.store.find_open(key)
         if existing is not None:
+            if (
+                existing.status == "remediating"
+                and existing.action == Action.RESTART_POD.value
+                and det.pod is not None
+                and det.pod != existing.pod
+            ):
+                # The replacement pod shows the same failure: the first fix did not work.
+                existing.note(now, "signal", f"Still failing after restart: {det.detail}")
+                existing.pod = det.pod
+                await self._remediate(existing, det)
+                return
             if det.source != existing.source and not any(
                 e.message.startswith(f"Confirmed by {det.source}") for e in existing.timeline
             ):
@@ -292,7 +308,9 @@ class Healer:
         if det.kind == "PodCrashLooping":
             pod = snap.pods.get(det.pod) if snap and det.pod else None
             decided = decide_crashloop_action(
-                restart_count=pod.restart_count if pod else self.settings.crashloop_restart_threshold,
+                # A CrashLoopBackOff alert has already applied its own threshold.
+                restart_count=max(pod.restart_count if pod else 0, self.settings.crashloop_restart_threshold)
+                if det.source == "prometheus" else (pod.restart_count if pod else 0),
                 threshold=self.settings.crashloop_restart_threshold,
                 has_previous_revision=bool(dep and dep.has_previous_revision),
                 current_revision_age_seconds=now - dep.revision_created_at if dep else 1e9,

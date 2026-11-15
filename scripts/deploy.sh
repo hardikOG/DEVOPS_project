@@ -4,8 +4,9 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 TAG="${IMAGE_TAG:-1.0.0}"
+cd "$ROOT"  # relative paths work for both Linux and Windows kubectl
 
-kubectl apply -f "$ROOT/k8s/namespaces.yaml"
+kubectl apply -f k8s/namespaces.yaml
 
 # Grafana admin password lives only in the cluster, never in git.
 if ! kubectl -n monitoring get secret grafana-admin >/dev/null 2>&1; then
@@ -14,7 +15,7 @@ if ! kubectl -n monitoring get secret grafana-admin >/dev/null 2>&1; then
   echo "created Grafana admin secret (read it with: kubectl -n monitoring get secret grafana-admin -o jsonpath='{.data.password}' | base64 -d)"
 fi
 
-kubectl kustomize "$ROOT/k8s" \
+kubectl kustomize k8s \
   | sed -E "s#(self-healing/(demo-service|healer)):1\.0\.0#\1:${TAG}#g" \
   | kubectl apply -f -
 
