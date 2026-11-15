@@ -15,8 +15,6 @@ pipeline {
   }
 
   parameters {
-    string(name: 'CLUSTER_RUNTIME', defaultValue: env.CLUSTER_RUNTIME ?: 'k3s-docker',
-           description: 'k3s-docker | shared-docker - how built images reach the cluster (scripts/load-images.sh)')
     booleanParam(name: 'RUN_CHAOS_GATE', defaultValue: true, description: 'Break the system and require auto-recovery')
   }
 
@@ -66,7 +64,7 @@ pipeline {
     }
 
     stage('Ship images to cluster') {
-      steps { sh 'CLUSTER_RUNTIME=${CLUSTER_RUNTIME} IMAGE_TAG=${IMAGE_TAG} bash scripts/load-images.sh' }
+      steps { sh 'IMAGE_TAG=${IMAGE_TAG} bash scripts/load-images.sh' }  // detects the cluster type itself
     }
 
     stage('Deploy') {

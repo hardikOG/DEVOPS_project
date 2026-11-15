@@ -5,9 +5,16 @@
 #   shared-docker  cluster uses the same Docker daemon (Docker Desktop Kubernetes, k3s --docker on EC2)
 set -euo pipefail
 
-RUNTIME="${CLUSTER_RUNTIME:-k3s-docker}"
 TAG="${IMAGE_TAG:-1.0.0}"
 NAME="${CLUSTER_NAME:-shk-k3s}"
+# Auto-detect when not told: a running k3s container means k3s-in-Docker, otherwise the
+# cluster shares this Docker daemon (Docker Desktop Kubernetes, or k3s --docker on EC2).
+if docker ps --format '{{.Names}}' | grep -qx "$NAME"; then detected=k3s-docker; else detected=shared-docker; fi
+RUNTIME="${CLUSTER_RUNTIME:-$detected}"
+if [ "$RUNTIME" = "k3s-docker" ] && [ "$detected" != "k3s-docker" ]; then
+  echo "no '$NAME' container here; treating cluster as shared-docker"
+  RUNTIME=shared-docker
+fi
 APP_IMAGES=("self-healing/demo-service:$TAG" "self-healing/healer:$TAG")
 INFRA_IMAGES=(prom/prometheus:v2.55.1 prom/alertmanager:v0.27.0 grafana/grafana:11.3.1
               registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.13.0)
