@@ -4,6 +4,8 @@ Aegis detects application failures on Kubernetes and recovers them automatically
 **verifies** that the recovery actually worked. You can break the system on purpose from the
 dashboard and watch it heal itself.
 
+![Aegis control plane mid-incident: a broken release is crash-looping and the healer is rolling it back](docs/healing.png)
+
 | Layer | What it does |
 |---|---|
 | **Kubernetes (k3s)** | Runs three microservices (`orders`, `payments`, `inventory`) with probes, rolling updates and a load generator |
@@ -52,6 +54,44 @@ dashboard and watch it heal itself.
   `self-healing` and nothing else.
 - **Dry-run mode** (`HEALER_DRY_RUN=true`): logs what it would have done.
 
+## Measured results
+
+From `scripts/chaos_test.py` against the local k3s cluster. Each scenario injects a fault, then waits
+until the healer reports a correlated incident as recovered *and* the service is fully healthy.
+**8/8 scenarios healed automatically**, with no human involved:
+
+| Scenario | Detected by | Action | Time to detect | Time to recover |
+|---|---|---|---|---|
+| Delete pod | Kubernetes watch | verify replacement | 1.8s | 4.1s |
+| Process crash | Kubernetes watch | verify restart | 2.0s | 2.1s |
+| Liveness hang | Kubernetes watch | verify restart | 8.4s | 2.1s |
+| Error storm (70% 5xx) | Prometheus | restart pod | 25.6s | 5.7s |
+| Latency spike (+900ms) | Prometheus | restart pod | 18.4s | 5.4s |
+| Memory leak | Prometheus | restart pod | 24.1s | 6.9s |
+| Scale to zero | Kubernetes watch | restore replicas | 0.7s | 8.4s |
+| Bad release | Prometheus | **roll back** | 18.5s | 1.7s |
+
+Metric-driven detection is slower by design: an alert needs a 30s rate window plus a `for:` hold to
+avoid acting on a single noisy scrape. The bad-release rollback recovers quickly because
+`maxUnavailable: 0` keeps the previous pods serving the whole time, so users never see the outage.
+
+### Bugs the live chaos runs caught
+
+Unit tests against a fake cluster passed. These two only showed up once real chaos ran against a
+real cluster:
+
+1. **Keep-alive pinning.** After a pod was replaced, the new pod received *zero* traffic. A
+   Kubernetes Service balances per TCP *connection*, and the load generator's pooled keep-alive
+   connections stayed on the surviving pod. An error injected into the new pod produced no 5xx and
+   therefore no alert. The fix disables keep-alive in the load generator. Real clients hit the same
+   problem, which is why L7 load balancing or a service mesh exists.
+2. **Crash-loop escalation.** Prometheus flagged `CrashLoopBackOff` before the pod reached the
+   healer's local restart threshold, so the healer recycled the pod instead of rolling back. The
+   replacement crash-looped too, and that signal was only recorded as a confirmation. Now a firing
+   crash-loop alert counts as meeting the threshold. If a remediation doesn't work (a replacement
+   pod shows the same failure), the healer acts again within the same incident. Regression tests
+   cover both.
+
 ---
 
 ## Quick start (local, only needs Docker)
@@ -70,6 +110,12 @@ make up          # k3s-in-Docker cluster + build images + deploy everything (~3 
 Open the control plane, pick a service in **Chaos lab**, click an experiment, and watch the incident
 timeline go *Detected → Action → Recovered*.
 
+![Control plane after a chaos run: every incident detected, acted on and verified](docs/dashboard.png)
+
+Grafana (provisioned automatically; chaos experiments show up as spikes that return to baseline):
+
+![Grafana dashboard](docs/grafana.png)
+
 You can also run all scenarios automatically:
 
 ```bash
@@ -84,7 +130,9 @@ make jenkins     # http://localhost:8080 (user admin, password generated into je
 
 The `aegis-self-healing` pipeline is created through Jenkins Configuration-as-Code and Job DSL.
 It checks out this repository, runs ruff and pytest, builds both images, loads them into the cluster,
-deploys, smoke-tests, and runs the chaos gate.
+deploys, smoke-tests, and runs the chaos gate. A full run takes about 2.5 minutes:
+
+![Jenkins stage view](docs/jenkins.png)
 
 ### AWS EC2
 
