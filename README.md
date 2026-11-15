@@ -144,8 +144,19 @@ terraform output urls
 ```
 
 The instance installs Docker and k3s (with Docker as its runtime), clones the repository, builds,
-deploys, and starts Jenkins, all from `user_data`. No SSH is needed. Bootstrapping takes about
-6–8 minutes. Run `terraform destroy` when you are done.
+deploys, and starts Jenkins, all from `user_data`. No SSH is needed. Run `terraform destroy` when
+you are done.
+
+**Verified on AWS** (t3.large, Ubuntu 24.04, us-east-1):
+- The control plane was serving traffic 2 minutes after `terraform apply`.
+- While the instance was still bootstrapping, a CPU-starved node made containers fail their liveness
+  probes. The healer recovered all 11 of the resulting incidents by itself. That led to adding a
+  `startupProbe`.
+- Jenkins on the instance picked up that commit from GitHub and ran the full pipeline, including the
+  chaos gate (4/4 healed).
+- The full 8-scenario chaos suite run against the instance passed 8/8.
+
+![Aegis running on EC2 after the chaos suite](docs/ec2-dashboard.png)
 
 ---
 
