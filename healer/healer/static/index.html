@@ -425,8 +425,13 @@ function renderAlerts() {
   $('alerts').innerHTML = a.length ? a.map(x => `<div class="alert ${x.state}"><b>${esc(x.name)}</b>${esc(x.state)}<span>${esc(x.target || '')}</span></div>`).join('') : '<div class="muted">No alerts firing.</div>';
 }
 
+// The other UIs live on the same machine as this page, on fixed ports. Rebuild each link from
+// the address in the browser bar so links survive a changed public IP (e.g. an EC2 restart).
+function sameHost(url) {
+  try { const u = new URL(url); u.hostname = location.hostname; return u.toString(); } catch (e) { return url; }
+}
 function renderLinks(s) {
-  const L = s.links; const items = [['Grafana', L.grafana, '#ff9830'], ['Prometheus', L.prometheus, '#e6522c'], ['Alertmanager', L.alertmanager, '#ffb547'], ['Jenkins', L.jenkins, '#d33833']];
+  const L = Object.fromEntries(Object.entries(s.links).map(([k, v]) => [k, sameHost(v)])); const items = [['Grafana', L.grafana, '#ff9830'], ['Prometheus', L.prometheus, '#e6522c'], ['Alertmanager', L.alertmanager, '#ffb547'], ['Jenkins', L.jenkins, '#d33833']];
   const html = items.map(([n, u, c]) => `<a href="${esc(u)}" target="_blank" rel="noopener"><i style="background:${c}"></i>${n}</a>`).join('');
   if ($('links').dataset.k !== html) { $('links').innerHTML = html; $('links').dataset.k = html; }
   $('nsTag').textContent = 'ns/' + s.healer.namespace;
