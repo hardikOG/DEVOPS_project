@@ -66,11 +66,11 @@ pipeline {
     }
 
     stage('Ship images to cluster') {
-      steps { sh 'CLUSTER_RUNTIME=${CLUSTER_RUNTIME} IMAGE_TAG=${IMAGE_TAG} scripts/load-images.sh' }
+      steps { sh 'CLUSTER_RUNTIME=${CLUSTER_RUNTIME} IMAGE_TAG=${IMAGE_TAG} bash scripts/load-images.sh' }
     }
 
     stage('Deploy') {
-      steps { sh 'IMAGE_TAG=${IMAGE_TAG} scripts/deploy.sh' }
+      steps { sh 'IMAGE_TAG=${IMAGE_TAG} bash scripts/deploy.sh' }
     }
 
     stage('Smoke test') {
