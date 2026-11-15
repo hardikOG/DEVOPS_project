@@ -77,7 +77,7 @@ avoid acting on a single noisy scrape. The bad-release rollback recovers quickly
 
 ### Bugs the live chaos runs caught
 
-Unit tests against a fake cluster passed. These two only showed up once real chaos ran against a
+Unit tests against a fake cluster passed. These only showed up once real chaos ran against a
 real cluster:
 
 1. **Keep-alive pinning.** After a pod was replaced, the new pod received *zero* traffic. A
@@ -91,6 +91,11 @@ real cluster:
    crash-loop alert counts as meeting the threshold. If a remediation doesn't work (a replacement
    pod shows the same failure), the healer acts again within the same incident. Regression tests
    cover both.
+3. **Rolling back onto another bad release.** On EC2, a chaos "bad release" and a Jenkins deploy
+   landed at the same moment, producing two broken revisions in a row. "Roll back to the previous
+   revision" just swapped one broken release for the other. The healer now rolls back to the newest
+   revision that still has healthy pods (the last known-good one). Re-tested live: with two bad
+   releases it went from revision 21 straight to 19 in one action.
 
 ---
 
