@@ -12,6 +12,8 @@ import logging
 from dataclasses import dataclass, field
 from typing import Protocol
 
+from .policy import choose_rollback_target
+
 log = logging.getLogger("healer.kube")
 
 REVISION_ANNOTATION = "deployment.kubernetes.io/revision"
@@ -169,7 +171,7 @@ class KubeGateway:
         )
 
     def rollback(self, deployment: str) -> str:
-        """Equivalent of `kubectl rollout undo`: re-apply the previous revision's pod template."""
+        """Like `kubectl rollout undo`, but targets the last revision that still has healthy pods."""
         replicasets = self.apps.list_namespaced_replica_set(self.namespace, label_selector=self.selector)
         history = sorted(
             (
@@ -179,9 +181,11 @@ class KubeGateway:
             ),
             key=lambda item: item[0],
         )
-        if len(history) < 2:
+        target = choose_rollback_target([(rev, rs.status.ready_replicas or 0) for rev, rs in history])
+        if target is None:
             raise RuntimeError(f"{deployment} has no previous revision to roll back to")
-        current_rev, previous_rev, previous_rs = history[-1][0], history[-2][0], history[-2][1]
+        current_rev = history[-1][0]
+        previous_rev, previous_rs = next((rev, rs) for rev, rs in history if rev == target)
         template = self.api_client.sanitize_for_serialization(previous_rs.spec.template)
         template.get("metadata", {}).get("labels", {}).pop("pod-template-hash", None)
         self.apps.patch_namespaced_deployment(

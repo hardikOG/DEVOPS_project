@@ -72,3 +72,15 @@ def test_budget_opens_circuit_then_recovers_as_window_slides():
     assert budget.allow("payments", 20)
     assert budget.allow("orders", 61)  # first action aged out
     assert budget.used("orders", 61) == 1
+
+
+def test_rollback_prefers_last_known_good_revision():
+    from healer.policy import choose_rollback_target
+
+    # rev 2 and 3 are both broken releases (0 ready); rev 1 is still serving.
+    assert choose_rollback_target([(1, 2), (2, 0), (3, 0)]) == 1
+    # Normal case: the previous revision is the healthy one.
+    assert choose_rollback_target([(4, 2), (5, 0)]) == 4
+    # Nothing healthy anywhere: fall back to the previous revision.
+    assert choose_rollback_target([(1, 0), (2, 0), (3, 0)]) == 2
+    assert choose_rollback_target([(1, 0)]) is None

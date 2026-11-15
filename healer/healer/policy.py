@@ -153,3 +153,20 @@ class ActionBudget:
 
     def used(self, key: str, now: float) -> int:
         return len(self._trim(key, now))
+
+
+def choose_rollback_target(history: list[tuple[int, int]]) -> int | None:
+    """Pick the revision to roll back to from (revision, ready_replicas) pairs, oldest first.
+
+    The last entry is the current (failing) revision. Prefer the newest older revision
+    that still has ready pods: that one is *known* to work. Blindly taking the previous
+    revision can land on another broken release (e.g. two bad deploys in a row), and the
+    healer would then bounce between them. Falls back to the previous revision.
+    """
+    if len(history) < 2:
+        return None
+    older = history[:-1]
+    for revision, ready in reversed(older):
+        if ready > 0:
+            return revision
+    return older[-1][0]
